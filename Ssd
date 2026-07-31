@@ -1,0 +1,654 @@
+-- ==================== Aongtong Hnb MM2 ULTIMATE (X-Ray + Thai Roles) 😈👹🥷👾❄️🌚👽❤️‍🩹🦠🕷️🔨 ====================
+-- วางใน StarterPlayerScripts หรือ StarterGui (LocalScript)
+-- เพิ่มฟีเจอร์: มองทะลุ (X-Ray), แสดงบทบาทภาษาไทย (คนดี/นายอำเภอ/ฆาตกร)
+-- กด F9 หรือปุ่ม X เพื่อเปิด/ปิด UI
+
+-- ==================== โหลดบริการ ====================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ==================== ตารางฟีเจอร์ ====================
+local Features = {
+    AutoFarm = false,
+    FarmRange = 30,
+    ESP = false,
+    ShowName = true,
+    ShowWeapon = true,
+    BoxESP = false,
+    Tracer = false,
+    XRay = false,          -- มองทะลุ
+    Speed = false,
+    SpeedValue = 45,
+    Jump = false,
+    JumpValue = 80,
+    NoClip = false,
+    Fly = false,
+    FlySpeed = 100,
+    AntiAFK = false
+}
+
+-- ==================== ตัวแปรสถานะ ====================
+local flying = false
+local flyBV = nil
+local espGui = nil
+local espFrames = {}
+local mainGui = nil
+local currentTab = "Farming"
+local dragging = false
+local dragStart = nil
+local startPos = nil
+local xrayParts = {}  -- เก็บส่วนที่ถูกปรับ transparency
+
+-- ==================== ฟังก์ชันตรวจจับบทบาท (คืนค่าเป็นภาษาไทย) ====================
+local function GetPlayerRoleThai(player)
+    if not player or not player.Character then return "คนดี", nil end
+    local function checkTool(container)
+        for _, tool in ipairs(container:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("knife") or name:find("dagger") or name:find("blade") then
+                    return "ฆาตกร", tool.Name
+                elseif name:find("gun") or name:find("pistol") or name:find("revolver") or name:find("sheriff") then
+                    return "นายอำเภอ", tool.Name
+                end
+            end
+        end
+        return nil, nil
+    end
+    local role, weapon = checkTool(player.Character)
+    if role then return role, weapon end
+    if player.Backpack then
+        role, weapon = checkTool(player.Backpack)
+        if role then return role, weapon end
+    end
+    return "คนดี", nil
+end
+
+-- ==================== ฟังก์ชัน X-Ray (มองทะลุ) ====================
+local function ApplyXRay(enable)
+    if enable then
+        -- ทำให้ทุกส่วนที่ไม่ใช่ตัวละครโปร่งใส
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not obj:IsDescendantOf(LocalPlayer.Character) then
+                -- เช็คว่าเป็นส่วนของแมพหรือสิ่งกีดขวาง
+                if obj.Parent and not obj.Parent:IsA("Model") or (obj.Parent:IsA("Model") and obj.Parent.Name ~= LocalPlayer.Name) then
+                    local origTrans = obj.Transparency
+                    if origTrans < 0.9 then  -- ป้องกันการซ้อนทับ
+                        obj.Transparency = 0.4
+                        table.insert(xrayParts, {obj, origTrans})
+                    end
+                end
+            end
+        end
+    else
+        -- คืนค่า transparency เดิม
+        for _, data in ipairs(xrayParts) do
+            local part = data[1]
+            local orig = data[2]
+            if part and part.Parent then
+                part.Transparency = orig
+            end
+        end
+        xrayParts = {}
+    end
+end
+
+-- ==================== สร้าง UI ขนาดเล็ก (Mobile Friendly) ====================
+local function CreateUI()
+    if mainGui then mainGui:Destroy() end
+    mainGui = Instance.new("ScreenGui")
+    mainGui.Name = "AongtongHnb"
+    mainGui.Parent = LocalPlayer.PlayerGui
+    mainGui.ResetOnSpawn = false
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 320, 0, 400)
+    mainFrame.Position = UDim2.new(0.5, -160, 0.5, -200)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 2
+    mainFrame.BorderColor3 = Color3.fromRGB(0, 140, 255)
+    mainFrame.ClipsDescendants = true
+    mainFrame.Parent = mainGui
+
+    -- หัวข้อ + ปุ่มปิด
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.Position = UDim2.new(0, 0, 0, 0)
+    titleBar.BackgroundColor3 = Color3.fromRGB(0, 90, 200)
+    titleBar.BackgroundTransparency = 0.3
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.8, 0, 1, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "Aongtong Hnb 😈"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextScaled = true
+    title.Font = Enum.Font.SourceSansBold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = titleBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -30, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.TextScaled = true
+    closeBtn.Font = Enum.Font.SourceSansBold
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Parent = titleBar
+    closeBtn.MouseButton1Click:Connect(function()
+        if mainGui then mainGui.Enabled = false end
+    end)
+
+    local line = Instance.new("Frame")
+    line.Size = UDim2.new(1, 0, 0, 2)
+    line.Position = UDim2.new(0, 0, 0, 30)
+    line.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
+    line.BorderSizePixel = 0
+    line.Parent = mainFrame
+
+    -- แท็บ
+    local tabFrame = Instance.new("Frame")
+    tabFrame.Size = UDim2.new(1, 0, 0, 28)
+    tabFrame.Position = UDim2.new(0, 0, 0, 32)
+    tabFrame.BackgroundTransparency = 1
+    tabFrame.Parent = mainFrame
+
+    local tabs = {"Farming", "Visuals", "Player"}
+    local tabButtons = {}
+    for i, name in ipairs(tabs) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 106, 1, 0)
+        btn.Position = UDim2.new(0, (i-1)*107, 0, 0)
+        btn.BackgroundColor3 = (i == 1) and Color3.fromRGB(0, 120, 255) or Color3.fromRGB(35, 35, 50)
+        btn.Text = name
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.SourceSansBold
+        btn.BorderSizePixel = 0
+        btn.Parent = tabFrame
+        tabButtons[name] = btn
+        btn.MouseButton1Click:Connect(function()
+            currentTab = name
+            for _, b in pairs(tabButtons) do
+                b.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+            end
+            btn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+            UpdateTabContent(name)
+        end)
+    end
+
+    local contentFrame = Instance.new("ScrollingFrame")
+    contentFrame.Size = UDim2.new(1, 0, 1, -62)
+    contentFrame.Position = UDim2.new(0, 0, 0, 60)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.BorderSizePixel = 0
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
+    contentFrame.ScrollBarThickness = 4
+    contentFrame.Parent = mainFrame
+
+    -- ==================== ฟังก์ชันสร้าง Toggle ====================
+    local function CreateToggle(parent, label, getter, setter)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -10, 0, 28)
+        row.Position = UDim2.new(0, 5, 0, #parent:GetChildren() * 32)
+        row.BackgroundTransparency = 1
+        row.Parent = parent
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0.6, 0, 1, 0)
+        lbl.Position = UDim2.new(0, 0, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = Color3.new(1,1,1)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextScaled = true
+        lbl.Font = Enum.Font.SourceSans
+        lbl.Parent = row
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 50, 1, 0)
+        btn.Position = UDim2.new(0.75, 0, 0, 0)
+        btn.BackgroundColor3 = getter() and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(100, 100, 100)
+        btn.Text = getter() and "ON" or "OFF"
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.SourceSansBold
+        btn.BorderSizePixel = 1
+        btn.BorderColor3 = Color3.new(0,0,0)
+        btn.Parent = row
+        btn.MouseButton1Click:Connect(function()
+            local newVal = not getter()
+            setter(newVal)
+            btn.BackgroundColor3 = newVal and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(100, 100, 100)
+            btn.Text = newVal and "ON" or "OFF"
+            -- ถ้าเป็น X-Ray ให้ปรับทันที
+            if label == "X-Ray (มองทะลุ)" then
+                ApplyXRay(newVal)
+            end
+        end)
+        return row
+    end
+
+    -- ==================== ฟังก์ชันสร้าง Slider ====================
+    local function CreateSlider(parent, label, getter, setter, min, max, step)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -10, 0, 42)
+        row.Position = UDim2.new(0, 5, 0, #parent:GetChildren() * 36)
+        row.BackgroundTransparency = 1
+        row.Parent = parent
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0.6, 0, 0.4, 0)
+        lbl.Position = UDim2.new(0, 0, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label .. ": " .. tostring(getter())
+        lbl.TextColor3 = Color3.new(1,1,1)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextScaled = true
+        lbl.Font = Enum.Font.SourceSans
+        lbl.Parent = row
+
+        local slider = Instance.new("Frame")
+        slider.Size = UDim2.new(0.7, 0, 0.3, 0)
+        slider.Position = UDim2.new(0, 0, 0.5, 0)
+        slider.BackgroundColor3 = Color3.fromRGB(60, 60, 75)
+        slider.BorderSizePixel = 1
+        slider.Parent = row
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((getter()-min)/(max-min), 0, 1, 0)
+        fill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+        fill.BorderSizePixel = 0
+        fill.Parent = slider
+
+        local drag = Instance.new("TextButton")
+        drag.Size = UDim2.new(0, 14, 1, 0)
+        drag.Position = UDim2.new((getter()-min)/(max-min), -7, 0, 0)
+        drag.BackgroundColor3 = Color3.new(1,1,1)
+        drag.BorderSizePixel = 1
+        drag.Text = ""
+        drag.Parent = slider
+
+        local function updateSlider(val)
+            val = math.clamp(val, min, max)
+            val = math.round(val / step) * step
+            setter(val)
+            lbl.Text = label .. ": " .. tostring(val)
+            fill.Size = UDim2.new((val-min)/(max-min), 0, 1, 0)
+            drag.Position = UDim2.new((val-min)/(max-min), -7, 0, 0)
+        end
+
+        drag.MouseButton1Down:Connect(function()
+            local connection
+            connection = UserInputService.InputChanged:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseMovement then
+                    local rel = (input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X
+                    updateSlider(min + rel * (max - min))
+                end
+            end)
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if connection then connection:Disconnect() end
+                end
+            end)
+        end)
+        return row
+    end
+
+    -- ==================== ฟังก์ชันสร้างเนื้อหาแท็บ ====================
+    local function BuildFarmingTab()
+        for _, v in ipairs(contentFrame:GetChildren()) do v:Destroy() end
+        CreateToggle(contentFrame, "AutoFarm", 
+            function() return Features.AutoFarm end, 
+            function(v) Features.AutoFarm = v end)
+        CreateSlider(contentFrame, "ระยะเก็บ", 
+            function() return Features.FarmRange end, 
+            function(v) Features.FarmRange = v end, 
+            5, 80, 1)
+    end
+
+    local function BuildVisualsTab()
+        for _, v in ipairs(contentFrame:GetChildren()) do v:Destroy() end
+        CreateToggle(contentFrame, "ESP", 
+            function() return Features.ESP end, 
+            function(v) Features.ESP = v end)
+        CreateToggle(contentFrame, "X-Ray (มองทะลุ)", 
+            function() return Features.XRay end, 
+            function(v) 
+                Features.XRay = v
+                ApplyXRay(v)
+            end)
+        CreateToggle(contentFrame, "ชื่อผู้เล่น", 
+            function() return Features.ShowName end, 
+            function(v) Features.ShowName = v end)
+        CreateToggle(contentFrame, "ชื่ออาวุธ", 
+            function() return Features.ShowWeapon end, 
+            function(v) Features.ShowWeapon = v end)
+        CreateToggle(contentFrame, "Box ESP", 
+            function() return Features.BoxESP end, 
+            function(v) Features.BoxESP = v end)
+        CreateToggle(contentFrame, "Tracer", 
+            function() return Features.Tracer end, 
+            function(v) Features.Tracer = v end)
+    end
+
+    local function BuildPlayerTab()
+        for _, v in ipairs(contentFrame:GetChildren()) do v:Destroy() end
+        CreateToggle(contentFrame, "Speed", 
+            function() return Features.Speed end, 
+            function(v) Features.Speed = v end)
+        CreateSlider(contentFrame, "ความเร็ว", 
+            function() return Features.SpeedValue end, 
+            function(v) Features.SpeedValue = v end, 
+            16, 120, 1)
+        CreateToggle(contentFrame, "Jump", 
+            function() return Features.Jump end, 
+            function(v) Features.Jump = v end)
+        CreateSlider(contentFrame, "พลังกระโดด", 
+            function() return Features.JumpValue end, 
+            function(v) Features.JumpValue = v end, 
+            50, 250, 5)
+        CreateToggle(contentFrame, "NoClip", 
+            function() return Features.NoClip end, 
+            function(v) Features.NoClip = v end)
+        CreateToggle(contentFrame, "Fly", 
+            function() return Features.Fly end, 
+            function(v) Features.Fly = v end)
+        CreateSlider(contentFrame, "ความเร็วบิน", 
+            function() return Features.FlySpeed end, 
+            function(v) Features.FlySpeed = v end, 
+            20, 250, 5)
+        CreateToggle(contentFrame, "AntiAFK", 
+            function() return Features.AntiAFK end, 
+            function(v) Features.AntiAFK = v end)
+    end
+
+    -- ==================== อัปเดตแท็บ ====================
+    local function UpdateTabContent(tab)
+        if tab == "Farming" then BuildFarmingTab()
+        elseif tab == "Visuals" then BuildVisualsTab()
+        elseif tab == "Player" then BuildPlayerTab()
+        end
+        local count = #contentFrame:GetChildren()
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, math.max(300, count * 40))
+    end
+    UpdateTabContent("Farming")
+
+    -- ==================== ให้ลาก UI ====================
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
+-- ==================== ESP แสดงบทบาทภาษาไทย ====================
+local function UpdateESP()
+    if not Features.ESP then
+        if espGui then espGui.Enabled = false end
+        return
+    end
+    if not espGui then
+        espGui = Instance.new("ScreenGui")
+        espGui.Name = "AongtongESP"
+        espGui.Parent = LocalPlayer.PlayerGui
+        espFrames = {}
+    end
+    espGui.Enabled = true
+
+    local count = 0
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            count = count + 1
+        end
+    end
+    while #espFrames > count do
+        local f = table.remove(espFrames)
+        if f then f:Destroy() end
+    end
+
+    local idx = 1
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local root = player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToScreenPoint(root.Position)
+            local frame = espFrames[idx]
+            if not frame then
+                frame = Instance.new("Frame")
+                frame.BackgroundTransparency = 0.35
+                frame.BorderSizePixel = 2
+                frame.BorderColor3 = Color3.new(1,1,1)
+                frame.Size = UDim2.new(0, 160, 0, 65)
+                frame.Parent = espGui
+                local nameLbl = Instance.new("TextLabel")
+                nameLbl.Name = "Name"
+                nameLbl.Size = UDim2.new(1,0, 0.35,0)
+                nameLbl.Position = UDim2.new(0,0, 0,0)
+                nameLbl.BackgroundTransparency = 1
+                nameLbl.TextScaled = true
+                nameLbl.Font = Enum.Font.SourceSansBold
+                nameLbl.TextColor3 = Color3.new(1,1,1)
+                nameLbl.Parent = frame
+                local roleLbl = Instance.new("TextLabel")
+                roleLbl.Name = "Role"
+                roleLbl.Size = UDim2.new(1,0, 0.3,0)
+                roleLbl.Position = UDim2.new(0,0, 0.35,0)
+                roleLbl.BackgroundTransparency = 1
+                roleLbl.TextScaled = true
+                roleLbl.Font = Enum.Font.SourceSansBold
+                roleLbl.TextColor3 = Color3.new(1,1,0)
+                roleLbl.Parent = frame
+                local weaponLbl = Instance.new("TextLabel")
+                weaponLbl.Name = "Weapon"
+                weaponLbl.Size = UDim2.new(1,0, 0.3,0)
+                weaponLbl.Position = UDim2.new(0,0, 0.65,0)
+                weaponLbl.BackgroundTransparency = 1
+                weaponLbl.TextScaled = true
+                weaponLbl.Font = Enum.Font.SourceSans
+                weaponLbl.TextColor3 = Color3.new(0.8,0.8,0.8)
+                weaponLbl.Parent = frame
+                local box = Instance.new("Frame")
+                box.Name = "Box"
+                box.Size = UDim2.new(0, 60, 0, 100)
+                box.Position = UDim2.new(0, -30, 0, -50)
+                box.BackgroundTransparency = 0.7
+                box.BorderSizePixel = 2
+                box.BorderColor3 = Color3.new(0,1,0)
+                box.Visible = Features.BoxESP
+                box.Parent = frame
+                local tracer = Instance.new("Frame")
+                tracer.Name = "Tracer"
+                tracer.Size = UDim2.new(0, 2, 0, screenPos.Y)
+                tracer.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - screenPos.Y)
+                tracer.BackgroundColor3 = Color3.new(0,1,0)
+                tracer.BackgroundTransparency = 0.5
+                tracer.Visible = Features.Tracer
+                tracer.Parent = frame
+                espFrames[idx] = frame
+            end
+            if onScreen then
+                frame.Visible = true
+                frame.Position = UDim2.new(0, screenPos.X - 80, 0, screenPos.Y - 80)
+                local roleThai, weapon = GetPlayerRoleThai(player)
+                local color = Color3.new(0, 0.7, 0)
+                local icon = "👤"
+                if roleThai == "นายอำเภอ" then
+                    color = Color3.new(0, 0.4, 1)
+                    icon = "👮"
+                elseif roleThai == "ฆาตกร" then
+                    color = Color3.new(0.8, 0, 0)
+                    icon = "🔪"
+                end
+                frame.BackgroundColor3 = color
+                frame.Name.Text = Features.ShowName and player.Name or ""
+                frame.Role.Text = icon .. " " .. roleThai
+                frame.Weapon.Text = (Features.ShowWeapon and weapon) and ("🗡️ " .. weapon) or ""
+                local box = frame:FindFirstChild("Box")
+                if box then box.Visible = Features.BoxESP end
+                local tracer = frame:FindFirstChild("Tracer")
+                if tracer then
+                    tracer.Visible = Features.Tracer
+                    tracer.Size = UDim2.new(0, 2, 0, screenPos.Y)
+                    tracer.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - screenPos.Y)
+                end
+            else
+                frame.Visible = false
+            end
+            idx = idx + 1
+        end
+    end
+end
+
+-- ==================== AutoFarm ====================
+local function AutoFarm()
+    if not Features.AutoFarm then return end
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local root = char.HumanoidRootPart
+    local target = nil
+    local minDist = Features.FarmRange + 1
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:match("Coin|Gem|Crystal|Key|Health|Diamond") and obj.Parent ~= char then
+            local dist = (obj.Position - root.Position).Magnitude
+            if dist < minDist then
+                minDist = dist; target = obj
+            end
+        end
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Name ~= LocalPlayer.Name then
+            local dist = (obj.HumanoidRootPart.Position - root.Position).Magnitude
+            if dist < minDist then
+                minDist = dist; target = obj.HumanoidRootPart
+            end
+        end
+    end
+    if target then
+        char.Humanoid:MoveTo(target.Position)
+        if (target.Position - root.Position).Magnitude < 4 then
+            if target.Parent and target.Parent:FindFirstChild("Humanoid") then
+                target.Parent.Humanoid.Health = 0
+            else
+                target:Destroy()
+            end
+        end
+    end
+end
+
+-- ==================== SpeedBoost ====================
+local function SpeedBoost()
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    if Features.Speed then humanoid.WalkSpeed = Features.SpeedValue
+    elseif humanoid.WalkSpeed == Features.SpeedValue then humanoid.WalkSpeed = 16 end
+end
+
+-- ==================== JumpBoost ====================
+local function JumpBoost()
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    if Features.Jump then humanoid.JumpPower = Features.JumpValue
+    elseif humanoid.JumpPower == Features.JumpValue then humanoid.JumpPower = 50 end
+end
+
+-- ==================== NoClip ====================
+local function NoClip()
+    if not LocalPlayer.Character then return end
+    for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = not Features.NoClip end
+    end
+end
+
+-- ==================== Fly ====================
+local function Fly()
+    if Features.Fly then
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        if not flying then
+            flying = true
+            flyBV = Instance.new("BodyVelocity")
+            flyBV.MaxForce = Vector3.new(100000, 100000, 100000)
+            flyBV.Velocity = Vector3.new(0, Features.FlySpeed, 0)
+            flyBV.Parent = char.HumanoidRootPart
+        end
+        if flyBV then
+            local move = Vector3.new(0,0,0)
+            local look = Camera.CFrame.LookVector
+            local right = Camera.CFrame.RightVector
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + look * Features.FlySpeed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - look * Features.FlySpeed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - right * Features.FlySpeed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + right * Features.FlySpeed end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, Features.FlySpeed, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, Features.FlySpeed, 0) end
+            flyBV.Velocity = move
+        end
+    else
+        if flyBV then flyBV:Destroy(); flyBV = nil end
+        flying = false
+    end
+end
+
+-- ==================== AntiAFK ====================
+local function AntiAFK()
+    if not Features.AntiAFK then return end
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid and humanoid.RootPart then
+        humanoid:MoveTo(humanoid.RootPart.Position + Vector3.new(math.random(-2,2), 0, math.random(-2,2)))
+    end
+end
+
+-- ==================== รันทุกเฟรม ====================
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        UpdateESP()
+        AutoFarm()
+        SpeedBoost()
+        JumpBoost()
+        NoClip()
+        Fly()
+        AntiAFK()
+    end)
+end)
+
+-- ==================== เปิด/ปิด UI (F9 และปุ่ม X) ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F9 then
+        if mainGui then
+            mainGui.Enabled = not mainGui.Enabled
+        else
+            CreateUI()
+        end
+    end
+end)
+
+-- ==================== สร้าง UI และข้อความ ====================
+CreateUI()
+print("╔══════════════════════════════════════════════╗")
+print("║  Aongtong Hnb MM2 ULTIMATE (X-Ray+Thai) 😈  ║")
+print("║  F9 หรือ X เพื่อปิด UI                     ║")
+print("║  ฟีเจอร์: มองทะลุ, แสดงบทบาทภาษาไทย       ║")
+print("║  คนดี 👤  นายอำเภอ 👮  ฆาตกร 🔪          ║")
+print("╚══════════════════════════════════════════════╝")
