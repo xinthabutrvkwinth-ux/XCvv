@@ -1,0 +1,459 @@
+-- 👽 FPS Universal Aimbot & ESP with Minimize UI by Saikuto 👽
+-- ข้อดี: Aimbot ทำงานอัตโนมัติไม่ต้องเปิดปิด, ESP มองทะลุ, วงกลมแดง Crosshair, 
+-- UI ลากได้, ย่อเป็นเอเลี่ยน, ปิดได้, กรอบฟ้าพื้นดำ, ปรับ FOV และ Smooth ได้ 🌚
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- 🛸 สร้าง UI หลัก
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "SaikutoFPS_👽"
+espGui.Parent = game.CoreGui
+espGui.ResetOnSpawn = false
+
+-- 🌌 ตัวแปร
+local espEnabled = true
+local crosshairEnabled = true
+local aimbotTarget = nil
+local fovRadius = 200
+local smoothness = 0.2
+local crosshairSize = 15
+local crosshairThickness = 2
+local crosshairColor = Color3.fromRGB(255, 0, 0)
+
+-- 🌌 วงกลมแดง Crosshair
+local crosshairCircle = Drawing.new("Circle")
+crosshairCircle.Visible = crosshairEnabled
+crosshairCircle.Radius = crosshairSize
+crosshairCircle.Color = crosshairColor
+crosshairCircle.Thickness = crosshairThickness
+crosshairCircle.Transparency = 0.3
+crosshairCircle.Filled = false
+crosshairCircle.ZIndex = 999
+
+local centerDot = Drawing.new("Circle")
+centerDot.Visible = crosshairEnabled
+centerDot.Radius = 2
+centerDot.Color = Color3.fromRGB(255, 0, 0)
+centerDot.Thickness = 1
+centerDot.Transparency = 0
+centerDot.Filled = true
+centerDot.ZIndex = 1000
+
+local crossH = Drawing.new("Line")
+crossH.Visible = crosshairEnabled
+crossH.Color = Color3.fromRGB(255, 50, 50)
+crossH.Thickness = 1
+crossH.Transparency = 0.5
+crossH.ZIndex = 998
+
+local crossV = Drawing.new("Line")
+crossV.Visible = crosshairEnabled
+crossV.Color = Color3.fromRGB(255, 50, 50)
+crossV.Thickness = 1
+crossV.Transparency = 0.5
+crossV.ZIndex = 998
+
+local function updateCrosshair()
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+	crosshairCircle.Position = screenCenter
+	crosshairCircle.Radius = crosshairSize
+	centerDot.Position = screenCenter
+	crossH.From = Vector2.new(screenCenter.X - crosshairSize, screenCenter.Y)
+	crossH.To = Vector2.new(screenCenter.X + crosshairSize, screenCenter.Y)
+	crossV.From = Vector2.new(screenCenter.X, screenCenter.Y - crosshairSize)
+	crossV.To = Vector2.new(screenCenter.X, screenCenter.Y + crosshairSize)
+end
+
+-- 🔵 FOV Circle
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = true  -- มองเห็นตลอด
+fovCircle.Radius = fovRadius
+fovCircle.Color = Color3.fromRGB(0, 150, 255) -- ฟ้าตามธีม
+fovCircle.Thickness = 1
+fovCircle.Transparency = 0.5
+fovCircle.Filled = false
+fovCircle.ZIndex = 500
+
+-- 🖼️ Frame หลัก (ธีมฟ้าดำ)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 230, 0, 240)
+mainFrame.Position = UDim2.new(0, 10, 0, 10)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10) -- ดำ
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true  -- ❄️ ลากได้
+mainFrame.Parent = espGui
+
+-- 🔷 ขอบสีฟ้าด้วย UIStroke
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(0, 200, 255)
+stroke.Thickness = 2
+stroke.Parent = mainFrame
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = mainFrame
+
+-- 🔷 ปุ่มย่อ (Minimize)
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+minimizeBtn.Position = UDim2.new(1, -64, 0, 8)
+minimizeBtn.AnchorPoint = Vector2.new(0, 0)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.Text = "—"
+minimizeBtn.Font = Enum.Font.SourceSansBold
+minimizeBtn.TextSize = 18
+minimizeBtn.Parent = mainFrame
+
+-- ❌ ปุ่มปิด
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -30, 0, 8)
+closeBtn.AnchorPoint = Vector2.new(0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 18
+closeBtn.Parent = mainFrame
+
+closeBtn.MouseButton1Click:Connect(function()
+	espGui:Destroy()
+end)
+
+-- 🔷 ชื่อ
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -70, 0, 20)
+titleLabel.Position = UDim2.new(0, 12, 0, 12)
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+titleLabel.Text = "👽 Saikuto FPS"
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 14
+titleLabel.Parent = mainFrame
+
+-- 🟢 ปุ่ม ESP Toggle
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0, 190, 0, 30)
+espBtn.Position = UDim2.new(0, 20, 0, 45)
+espBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+espBtn.Text = "ESP: ON 🟢"
+espBtn.Font = Enum.Font.SourceSansBold
+espBtn.TextSize = 13
+espBtn.Parent = mainFrame
+
+-- 🔴 ปุ่ม Crosshair Toggle
+local crosshairBtn = Instance.new("TextButton")
+crosshairBtn.Size = UDim2.new(0, 190, 0, 30)
+crosshairBtn.Position = UDim2.new(0, 20, 0, 85)
+crosshairBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+crosshairBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+crosshairBtn.Text = "Crosshair: ON 🔴"
+crosshairBtn.Font = Enum.Font.SourceSansBold
+crosshairBtn.TextSize = 13
+crosshairBtn.Parent = mainFrame
+
+-- 📏 ปรับ FOV
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(0, 80, 0, 25)
+fovLabel.Position = UDim2.new(0, 20, 0, 130)
+fovLabel.BackgroundTransparency = 1
+fovLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovLabel.Text = "FOV: " .. fovRadius
+fovLabel.Font = Enum.Font.SourceSans
+fovLabel.TextSize = 12
+fovLabel.Parent = mainFrame
+
+local fovUp = Instance.new("TextButton")
+fovUp.Size = UDim2.new(0, 35, 0, 25)
+fovUp.Position = UDim2.new(0, 105, 0, 130)
+fovUp.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+fovUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovUp.Text = "+"
+fovUp.Font = Enum.Font.SourceSansBold
+fovUp.Parent = mainFrame
+fovUp.MouseButton1Click:Connect(function()
+	fovRadius = math.min(fovRadius + 25, 800)
+	fovLabel.Text = "FOV: " .. fovRadius
+end)
+
+local fovDown = Instance.new("TextButton")
+fovDown.Size = UDim2.new(0, 35, 0, 25)
+fovDown.Position = UDim2.new(0, 145, 0, 130)
+fovDown.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+fovDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovDown.Text = "-"
+fovDown.Font = Enum.Font.SourceSansBold
+fovDown.Parent = mainFrame
+fovDown.MouseButton1Click:Connect(function()
+	fovRadius = math.max(fovRadius - 25, 50)
+	fovLabel.Text = "FOV: " .. fovRadius
+end)
+
+-- 🎯 ปรับ Smooth
+local smoothLabel = Instance.new("TextLabel")
+smoothLabel.Size = UDim2.new(0, 100, 0, 25)
+smoothLabel.Position = UDim2.new(0, 20, 0, 165)
+smoothLabel.BackgroundTransparency = 1
+smoothLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+smoothLabel.Text = "Smooth: " .. string.format("%.2f", smoothness)
+smoothLabel.Font = Enum.Font.SourceSans
+smoothLabel.TextSize = 12
+smoothLabel.Parent = mainFrame
+
+local smoothUp = Instance.new("TextButton")
+smoothUp.Size = UDim2.new(0, 35, 0, 25)
+smoothUp.Position = UDim2.new(0, 125, 0, 165)
+smoothUp.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+smoothUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+smoothUp.Text = "+"
+smoothUp.Font = Enum.Font.SourceSansBold
+smoothUp.Parent = mainFrame
+smoothUp.MouseButton1Click:Connect(function()
+	smoothness = math.min(smoothness + 0.05, 1.0)
+	smoothLabel.Text = "Smooth: " .. string.format("%.2f", smoothness)
+end)
+
+local smoothDown = Instance.new("TextButton")
+smoothDown.Size = UDim2.new(0, 35, 0, 25)
+smoothDown.Position = UDim2.new(0, 165, 0, 165)
+smoothDown.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+smoothDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+smoothDown.Text = "-"
+smoothDown.Font = Enum.Font.SourceSansBold
+smoothDown.Parent = mainFrame
+smoothDown.MouseButton1Click:Connect(function()
+	smoothness = math.max(smoothness - 0.05, 0.05)
+	smoothLabel.Text = "Smooth: " .. string.format("%.2f", smoothness)
+end)
+
+-- 👽 ปุ่มเอเลี่ยนตอนย่อ (Minimized Icon)
+local alienIcon = Instance.new("TextButton")
+alienIcon.Name = "AlienIcon"
+alienIcon.Size = UDim2.new(0, 50, 0, 50)
+alienIcon.Position = UDim2.new(0, 10, 0, 10) -- ตำแหน่งเดียวกับกรอบเดิม
+alienIcon.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+alienIcon.BorderSizePixel = 0
+alienIcon.Text = "👽"
+alienIcon.Font = Enum.Font.SourceSansBold
+alienIcon.TextSize = 30
+alienIcon.TextColor3 = Color3.fromRGB(0, 200, 255)
+alienIcon.Active = true
+alienIcon.Draggable = true -- ลากได้
+alienIcon.Visible = false -- ซ่อนก่อน
+alienIcon.Parent = espGui
+
+local alienStroke = Instance.new("UIStroke")
+alienStroke.Color = Color3.fromRGB(0, 200, 255)
+alienStroke.Thickness = 2
+alienStroke.Parent = alienIcon
+
+local alienCorner = Instance.new("UICorner")
+alienCorner.CornerRadius = UDim.new(0, 25) -- กลมๆ
+alienCorner.Parent = alienIcon
+
+-- 🔁 ฟังก์ชันย่อ/ขยาย
+local function minimizeUI()
+	mainFrame.Visible = false
+	alienIcon.Visible = true
+	-- ย้ายปุ่มเอเลี่ยนไปที่เดิมของ mainFrame
+	alienIcon.Position = mainFrame.Position
+end
+
+local function maximizeUI()
+	alienIcon.Visible = false
+	mainFrame.Visible = true
+end
+
+minimizeBtn.MouseButton1Click:Connect(minimizeUI)
+alienIcon.MouseButton1Click:Connect(maximizeUI)
+
+-- 🕷️ ESP System
+local function createESP()
+	local espFolder = Instance.new("Folder")
+	espFolder.Name = "ESP_Folder"
+	espFolder.Parent = game.CoreGui
+
+	local function addESP(player)
+		local character = player.Character
+		if not character then return end
+		local humanoid = character:FindFirstChild("Humanoid")
+		local head = character:FindFirstChild("Head")
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if not humanoid or not head or not root then return end
+
+		local highlight = Instance.new("Highlight")
+		highlight.Name = player.Name
+		highlight.FillColor = Color3.fromRGB(0, 150, 255) -- ฟ้า
+		highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+		highlight.FillTransparency = 0.5
+		highlight.OutlineTransparency = 0
+		highlight.Parent = espFolder
+
+		local tracer = Drawing.new("Line")
+		tracer.Color = Color3.fromRGB(0, 150, 255)
+		tracer.Thickness = 1
+		tracer.Transparency = 0.6
+		tracer.Visible = true
+
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "Info_" .. player.Name
+		billboard.Size = UDim2.new(0, 200, 0, 40)
+		billboard.StudsOffset = Vector3.new(0, 3, 0)
+		billboard.AlwaysOnTop = true
+		billboard.Parent = head
+
+		local infoLabel = Instance.new("TextLabel")
+		infoLabel.Size = UDim2.new(1, 0, 1, 0)
+		infoLabel.BackgroundTransparency = 1
+		infoLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+		infoLabel.Font = Enum.Font.SourceSansBold
+		infoLabel.TextSize = 13
+		infoLabel.TextStrokeTransparency = 0
+		infoLabel.Parent = billboard
+
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			if not character or not character.Parent or not humanoid or humanoid.Health <= 0 then
+				connection:Disconnect()
+				highlight:Destroy()
+				billboard:Destroy()
+				tracer:Remove()
+				return
+			end
+			local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+			local pos = root.Position
+			local dist = myRoot and math.floor((myRoot.Position - pos).Magnitude) or 0
+			infoLabel.Text = string.format("%s\nHP: %.0f | %dm", player.Name, humanoid.Health, dist)
+
+			local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+			local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+			if onScreen then
+				tracer.From = screenCenter
+				tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+			else
+				tracer.From = screenCenter
+				tracer.To = screenCenter
+			end
+		end)
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			addESP(player)
+		end
+	end
+
+	Players.PlayerAdded:Connect(function(player)
+		if player ~= LocalPlayer then
+			player.CharacterAdded:Connect(function()
+				task.wait(0.5)
+				addESP(player)
+			end)
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		local espFolder = game.CoreGui:FindFirstChild("ESP_Folder")
+		if espFolder then
+			local hl = espFolder:FindFirstChild(player.Name)
+			if hl then hl:Destroy() end
+		end
+	end)
+
+	return espFolder
+end
+
+local currentESP = nil
+local function clearESP()
+	if currentESP then
+		currentESP:Destroy()
+		currentESP = nil
+	end
+end
+
+-- 🟢 ปุ่ม ESP Toggle
+espBtn.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	if espEnabled then
+		espBtn.Text = "ESP: ON 🟢"
+		espBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+		currentESP = createESP()
+	else
+		espBtn.Text = "ESP: OFF 🔴"
+		espBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+		clearESP()
+	end
+end)
+
+crosshairBtn.MouseButton1Click:Connect(function()
+	crosshairEnabled = not crosshairEnabled
+	if crosshairEnabled then
+		crosshairBtn.Text = "Crosshair: ON 🔴"
+		crosshairBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+	else
+		crosshairBtn.Text = "Crosshair: OFF ⚪"
+		crosshairBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	end
+	crosshairCircle.Visible = crosshairEnabled
+	centerDot.Visible = crosshairEnabled
+	crossH.Visible = crosshairEnabled
+	crossV.Visible = crosshairEnabled
+end)
+
+-- 🎯 Aimbot Function (ทำงานตลอด)
+local function getClosestInFOV()
+	local closest = nil
+	local shortestDistance = fovRadius
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player == LocalPlayer then continue end
+		local char = player.Character
+		if not char then continue end
+		local head = char:FindFirstChild("Head")
+		local humanoid = char:FindFirstChild("Humanoid")
+		if not head or not humanoid or humanoid.Health <= 0 then continue end
+
+		local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+		if not onScreen then continue end
+		local dist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+		if dist < shortestDistance then
+			shortestDistance = dist
+			closest = player
+		end
+	end
+	return closest
+end
+
+-- 🔁 Main Loop
+RunService.RenderStepped:Connect(function()
+	updateCrosshair()
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+	fovCircle.Position = screenCenter
+	fovCircle.Radius = fovRadius
+
+	-- Aimbot ทำงานเสมอ
+	aimbotTarget = getClosestInFOV()
+	if aimbotTarget and aimbotTarget.Character then
+		local head = aimbotTarget.Character:FindFirstChild("Head")
+		if head then
+			local targetPos = Camera:WorldToViewportPoint(head.Position)
+			local delta = Vector2.new(targetPos.X, targetPos.Y) - screenCenter
+			if delta.Magnitude > 1 then
+				mousemoverel(delta.X * smoothness, delta.Y * smoothness)
+			end
+		end
+	end
+end)
+
+-- เริ่ม ESP
+currentESP = createESP()
+print("👽 Saikuto FPS Aimbot + ESP loaded. UI ย่อเป็นเอเลี่ยนได้.")
