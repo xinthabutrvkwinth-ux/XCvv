@@ -1,0 +1,108 @@
+-- 🌚 UI Script Executor by Saikuto 🌚
+-- ข้อดี: แก้ไขสคริปต์ได้ทันที, รันครั้งเดียวหรือรัวๆ, UI ลากได้, ดีไซน์มืด 👽
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "SaikutoHub_😈"
+gui.Parent = game.CoreGui  -- ใช้ CoreGui เพื่อซ่อนจากผู้เล่นทั่วไป
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 450, 0, 350)
+main.Position = UDim2.new(0.5, -225, 0.5, -175)
+main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true  -- ❄️ ลากง่าย
+main.Parent = gui
+
+-- 🥷 กล่องใส่สคริปต์
+local scriptBox = Instance.new("TextBox")
+scriptBox.Size = UDim2.new(1, -20, 0.65, 0)
+scriptBox.Position = UDim2.new(0, 10, 0, 10)
+scriptBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+scriptBox.TextColor3 = Color3.fromRGB(0, 255, 100)
+scriptBox.Font = Enum.Font.Code
+scriptBox.TextSize = 14
+scriptBox.ClearTextOnFocus = false
+scriptBox.MultiLine = true
+scriptBox.Text = "-- วางสคริปต์ที่นี่ 👾"
+scriptBox.Parent = main
+
+-- 🕷️ ปุ่ม Run Once
+local btnOnce = Instance.new("TextButton")
+btnOnce.Size = UDim2.new(0, 120, 0, 35)
+btnOnce.Position = UDim2.new(0.05, 0, 0.72, 0)
+btnOnce.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+btnOnce.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnOnce.Font = Enum.Font.SourceSansBold
+btnOnce.TextSize = 16
+btnOnce.Text = "Run Once 🔨"
+btnOnce.Parent = main
+
+-- 🦠 ปุ่ม Run Loop (รัวๆ)
+local btnLoop = Instance.new("TextButton")
+btnLoop.Size = UDim2.new(0, 120, 0, 35)
+btnLoop.Position = UDim2.new(0.35, 0, 0.72, 0)
+btnLoop.BackgroundColor3 = Color3.fromRGB(180, 180, 0)
+btnLoop.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnLoop.Font = Enum.Font.SourceSansBold
+btnLoop.TextSize = 16
+btnLoop.Text = "Run Loop 🦠"
+btnLoop.Parent = main
+
+-- ❤️‍🩹 ปุ่มหยุดลูป
+local btnStop = Instance.new("TextButton")
+btnStop.Size = UDim2.new(0, 120, 0, 35)
+btnStop.Position = UDim2.new(0.65, 0, 0.72, 0)
+btnStop.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+btnStop.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnStop.Font = Enum.Font.SourceSansBold
+btnStop.TextSize = 16
+btnStop.Text = "Stop ❤️‍🩹"
+btnStop.Parent = main
+
+-- 🌚 ตัวแปรควบคุมลูป
+local isLooping = false
+local loopThread = nil
+
+-- 👾 ฟังก์ชันรันสคริปต์จากกล่อง
+local function execute()
+	local code = scriptBox.Text
+	local f, syntaxErr = loadstring(code)
+	if not f then
+		warn("❄️ Syntax Error: " .. tostring(syntaxErr))
+		return
+	end
+	local success, runtimeErr = pcall(f)
+	if not success then
+		warn("🕷️ Runtime Error: " .. tostring(runtimeErr))
+	end
+end
+
+-- 🔨 ปุ่ม Run Once
+btnOnce.MouseButton1Click:Connect(function()
+	execute()
+end)
+
+-- 🦠 ปุ่ม Run Loop
+btnLoop.MouseButton1Click:Connect(function()
+	if isLooping then return end
+	isLooping = true
+	loopThread = task.spawn(function()
+		while isLooping do
+			execute()
+			task.wait(0.05)  -- หน่วงเล็กน้อยกันค้าง
+		end
+	end)
+end)
+
+-- ❤️‍🩹 ปุ่มหยุด
+btnStop.MouseButton1Click:Connect(function()
+	isLooping = false
+	if loopThread then
+		task.cancel(loopThread)
+		loopThread = nil
+	end
+end)
+
+-- 🥷 ปิด UI ด้วยคีย์ (ถ้าต้องการ)
+gui.ResetOnSpawn = false
