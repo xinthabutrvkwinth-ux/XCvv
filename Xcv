@@ -1,0 +1,560 @@
+-- 👾 Saikuto Universal Hack Panel 👾
+-- ข้อดี: รวมทุกฟีเจอร์ใน UI เดียว, ลาก/ย่อ/ปิดได้, ธีมม่วงดำ, Fly, Speed, Jump, NoClip, God, ESP, Aimbot
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+
+-- 🌚 สร้าง GUI หลัก
+local gui = Instance.new("ScreenGui")
+gui.Name = "SaikutoUniversal_👾"
+gui.Parent = game.CoreGui
+gui.ResetOnSpawn = false
+
+-- 🟣 ตัวแปรสถานะฟีเจอร์
+local flyEnabled = false
+local speedEnabled = false
+local infJumpEnabled = false
+local noClipEnabled = false
+local godEnabled = false
+local espEnabled = false
+local aimbotEnabled = false
+local fovRadius = 200
+local smoothness = 0.2
+local crosshairEnabled = true
+local crosshairSize = 15
+
+-- 🟣 BodyVelocity สำหรับ Fly (จะถูกสร้างเมื่อเปิด)
+local flyBody = nil
+local flyGyro = nil
+
+-- 🟣 UI Main Frame (ธีมม่วงดำ)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 260, 0, 420)
+mainFrame.Position = UDim2.new(0, 20, 0, 20)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = gui
+
+-- 🕷️ ขอบสีม่วง
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(180, 0, 255)
+stroke.Thickness = 2
+stroke.Parent = mainFrame
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = mainFrame
+
+-- 🔨 ชื่อหัวข้อ
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -70, 0, 25)
+title.Position = UDim2.new(0, 12, 0, 10)
+title.BackgroundTransparency = 1
+title.TextColor3 = Color3.fromRGB(180, 0, 255)
+title.Text = "👾 Saikuto Universal"
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 16
+title.Parent = mainFrame
+
+-- ❌ ปุ่มปิด
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 28, 0, 28)
+closeBtn.Position = UDim2.new(1, -34, 0, 8)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Text = "✕"
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.TextSize = 16
+closeBtn.Parent = mainFrame
+closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+-- 📦 ปุ่มย่อ (Minimize)
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 28, 0, 28)
+minimizeBtn.Position = UDim2.new(1, -66, 0, 8)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 180)
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeBtn.Text = "–"
+minimizeBtn.Font = Enum.Font.SourceSansBold
+minimizeBtn.TextSize = 18
+minimizeBtn.Parent = mainFrame
+
+-- 🟣 ไอคอนย่อ (หัวกะโหลก)
+local minIcon = Instance.new("TextButton")
+minIcon.Name = "MinIcon"
+minIcon.Size = UDim2.new(0, 45, 0, 45)
+minIcon.Position = UDim2.new(0, 20, 0, 20)
+minIcon.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+minIcon.BorderSizePixel = 0
+minIcon.Text = "💀"
+minIcon.Font = Enum.Font.SourceSansBold
+minIcon.TextSize = 28
+minIcon.TextColor3 = Color3.fromRGB(180, 0, 255)
+minIcon.Active = true
+minIcon.Draggable = true
+minIcon.Visible = false
+minIcon.Parent = gui
+local minStroke = Instance.new("UIStroke")
+minStroke.Color = Color3.fromRGB(180, 0, 255)
+minStroke.Thickness = 2
+minStroke.Parent = minIcon
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 22)
+minCorner.Parent = minIcon
+
+minimizeBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+	minIcon.Visible = true
+	minIcon.Position = mainFrame.Position
+end)
+minIcon.MouseButton1Click:Connect(function()
+	minIcon.Visible = false
+	mainFrame.Visible = true
+end)
+
+-- 🔹 ฟังก์ชันสร้างปุ่ม Toggle แบบ reusable
+local function createToggle(name, parent, yPos, defaultState, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 220, 0, 32)
+	btn.Position = UDim2.new(0, 20, 0, yPos)
+	btn.BackgroundColor3 = defaultState and Color3.fromRGB(100, 0, 160) or Color3.fromRGB(60, 60, 60)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Text = name .. ": " .. (defaultState and "ON" or "OFF")
+	btn.Font = Enum.Font.SourceSansBold
+	btn.TextSize = 14
+	btn.Parent = parent
+	local state = defaultState
+	btn.MouseButton1Click:Connect(function()
+		state = not state
+		btn.Text = name .. ": " .. (state and "ON" or "OFF")
+		btn.BackgroundColor3 = state and Color3.fromRGB(100, 0, 160) or Color3.fromRGB(60, 60, 60)
+		callback(state)
+	end)
+	return btn
+end
+
+-- 🛸 ฟังก์ชัน Fly
+local function setFly(active)
+	if active then
+		Character = LocalPlayer.Character
+		if not Character then return end
+		local root = Character:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		flyBody = Instance.new("BodyVelocity")
+		flyBody.Velocity = Vector3.zero
+		flyBody.MaxForce = Vector3.new(1, 1, 1) * 4000
+		flyBody.Parent = root
+		flyGyro = Instance.new("BodyGyro")
+		flyGyro.MaxTorque = Vector3.new(1, 1, 1) * 4000
+		flyGyro.CFrame = root.CFrame
+		flyGyro.Parent = root
+		-- ควบคุมด้วยคีย์ W A S D Space Shift
+		local keys = {W = false, A = false, S = false, D = false, Space = false, LShift = false}
+		local inputBegan = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed then return end
+			if input.KeyCode == Enum.KeyCode.W then keys.W = true
+			elseif input.KeyCode == Enum.KeyCode.A then keys.A = true
+			elseif input.KeyCode == Enum.KeyCode.S then keys.S = true
+			elseif input.KeyCode == Enum.KeyCode.D then keys.D = true
+			elseif input.KeyCode == Enum.KeyCode.Space then keys.Space = true
+			elseif input.KeyCode == Enum.KeyCode.LeftShift then keys.LShift = true
+			end
+		end)
+		local inputEnded = UserInputService.InputEnded:Connect(function(input)
+			if input.KeyCode == Enum.KeyCode.W then keys.W = false
+			elseif input.KeyCode == Enum.KeyCode.A then keys.A = false
+			elseif input.KeyCode == Enum.KeyCode.S then keys.S = false
+			elseif input.KeyCode == Enum.KeyCode.D then keys.D = false
+			elseif input.KeyCode == Enum.KeyCode.Space then keys.Space = false
+			elseif input.KeyCode == Enum.KeyCode.LeftShift then keys.LShift = false
+			end
+		end)
+		local heartbeat
+		heartbeat = RunService.Heartbeat:Connect(function()
+			if not flyBody or not flyGyro or not root or not root.Parent then
+				heartbeat:Disconnect()
+				inputBegan:Disconnect()
+				inputEnded:Disconnect()
+				return
+			end
+			local direction = Vector3.zero
+			local camDir = Camera.CFrame.LookVector
+			local camRight = Camera.CFrame.RightVector
+			if keys.W then direction = direction + camDir end
+			if keys.S then direction = direction - camDir end
+			if keys.A then direction = direction - camRight end
+			if keys.D then direction = direction + camRight end
+			if keys.Space then direction = direction + Vector3.new(0, 1, 0) end
+			if keys.LShift then direction = direction - Vector3.new(0, 1, 0) end
+			local speed = 50
+			flyBody.Velocity = direction * speed
+			flyGyro.CFrame = CFrame.new(root.Position, root.Position + camDir)
+		end)
+		-- เก็บ reference เพื่อลบภายหลัง
+		flyBody.Changed:Connect(function()
+			if not flyBody.Parent then
+				heartbeat:Disconnect()
+				inputBegan:Disconnect()
+				inputEnded:Disconnect()
+			end
+		end)
+	else
+		if flyBody then flyBody:Destroy() end
+		if flyGyro then flyGyro:Destroy() end
+		flyBody = nil
+		flyGyro = nil
+	end
+end
+
+-- 🏃 Speed
+local function setSpeed(active)
+	Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+	if Humanoid then
+		Humanoid.WalkSpeed = active and 50 or 16
+	end
+end
+
+-- 🦘 Infinite Jump
+local function setInfJump(active)
+	Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+	if Humanoid then
+		Humanoid.JumpPower = active and 100 or 50
+		if active then
+			-- ยอมให้กระโดดกลางอากาศ
+			local uis = UserInputService
+			local jumpRequest
+			jumpRequest = uis.JumpRequest:Connect(function()
+				if Humanoid and Humanoid.Parent then
+					Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+				end
+			end)
+			-- ล้างเมื่อปิด
+			-- (จะใช้ disconnect ภายนอก) จัดการด้วยตัวแปร
+			if not _G.InfJumpConns then _G.InfJumpConns = {} end
+			table.insert(_G.InfJumpConns, jumpRequest)
+		else
+			if _G.InfJumpConns then
+				for _, conn in ipairs(_G.InfJumpConns) do conn:Disconnect() end
+				_G.InfJumpConns = {}
+			end
+		end
+	end
+end
+
+-- 🚫 NoClip
+local function setNoClip(active)
+	local function apply()
+		for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = not active
+			end
+		end
+	end
+	if LocalPlayer.Character then apply() end
+	LocalPlayer.CharacterAdded:Connect(function(char)
+		if noClipEnabled then
+			char:WaitForChild("Head", 5)
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+		end
+	end)
+	-- ใช้ repeat ตรวจสอบเมื่อเกิดการเปลี่ยนแปลง
+end
+
+-- 💀 God Mode
+local function setGod(active)
+	Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+	if Humanoid then
+		if active then
+			Humanoid.Health = 9999
+			Humanoid.MaxHealth = 9999
+			Humanoid.Name = "GodHuman"
+			-- ป้องกัน damage
+			local godCon = Humanoid.HealthChanged:Connect(function()
+				if godEnabled then
+					Humanoid.Health = 9999
+				end
+			end)
+			-- เก็บ connection
+			if not _G.GodConns then _G.GodConns = {} end
+			table.insert(_G.GodConns, godCon)
+		else
+			Humanoid.MaxHealth = 100
+			if _G.GodConns then
+				for _, conn in ipairs(_G.GodConns) do conn:Disconnect() end
+				_G.GodConns = {}
+			end
+		end
+	end
+end
+
+-- 🕷️ ESP (เรียกใช้จากสคริปเดิม)
+local espFolder = nil
+local function setESP(active)
+	if active then
+		espFolder = Instance.new("Folder")
+		espFolder.Name = "ESP_👾"
+		espFolder.Parent = game.CoreGui
+		local function addESP(player)
+			local char = player.Character
+			if not char then return end
+			local head = char:FindFirstChild("Head")
+			local humanoid = char:FindFirstChild("Humanoid")
+			local root = char:FindFirstChild("HumanoidRootPart")
+			if not (head and humanoid and root) then return end
+			local hl = Instance.new("Highlight")
+			hl.FillColor = Color3.fromRGB(180, 0, 255)
+			hl.OutlineColor = Color3.fromRGB(255,255,255)
+			hl.FillTransparency = 0.5
+			hl.Parent = espFolder
+			local bill = Instance.new("BillboardGui")
+			bill.Adornee = head
+			bill.Size = UDim2.new(0,200,0,30)
+			bill.StudsOffset = Vector3.new(0,2.5,0)
+			bill.AlwaysOnTop = true
+			local label = Instance.new("TextLabel", bill)
+			label.Size = UDim2.new(1,0,1,0)
+			label.BackgroundTransparency = 1
+			label.TextColor3 = Color3.fromRGB(255,255,255)
+			label.TextStrokeTransparency = 0
+			label.Font = Enum.Font.SourceSansBold
+			label.TextSize = 13
+			local conn
+			conn = RunService.RenderStepped:Connect(function()
+				if not char or not char.Parent or not humanoid or humanoid.Health <= 0 then
+					conn:Disconnect()
+					hl:Destroy()
+					bill:Destroy()
+					return
+				end
+				local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				local dist = myRoot and math.floor((myRoot.Position - root.Position).Magnitude) or 0
+				label.Text = string.format("%s | HP: %.0f | %dm", player.Name, humanoid.Health, dist)
+			end)
+		end
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then addESP(p) end
+		end
+		Players.PlayerAdded:Connect(function(p)
+			if p ~= LocalPlayer then
+				p.CharacterAdded:Connect(function() task.wait(0.3) addESP(p) end)
+			end
+		end)
+		Players.PlayerRemoving:Connect(function(p)
+			if espFolder then
+				local found = espFolder:FindFirstChild(p.Name.."_HL")
+				if found then found:Destroy() end
+			end
+		end)
+	else
+		if espFolder then espFolder:Destroy() end
+		espFolder = nil
+	end
+end
+
+-- 🎯 Aimbot (พร้อม Crosshair)
+local aimbotTarget = nil
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = false
+fovCircle.Color = Color3.fromRGB(180,0,255)
+fovCircle.Thickness = 1
+fovCircle.Transparency = 0.5
+local crossCircle = Drawing.new("Circle")
+crossCircle.Visible = true
+crossCircle.Color = Color3.fromRGB(255,0,0)
+crossCircle.Thickness = 2
+crossCircle.Transparency = 0.3
+crossCircle.Radius = crosshairSize
+local crossDot = Drawing.new("Circle")
+crossDot.Visible = true
+crossDot.Color = Color3.fromRGB(255,0,0)
+crossDot.Thickness = 1
+crossDot.Transparency = 0
+crossDot.Radius = 2
+crossDot.Filled = true
+local crossHLine = Drawing.new("Line")
+crossHLine.Visible = true
+crossHLine.Color = Color3.fromRGB(255,50,50)
+crossHLine.Thickness = 1
+crossHLine.Transparency = 0.5
+local crossVLine = Drawing.new("Line")
+crossVLine.Visible = true
+crossVLine.Color = Color3.fromRGB(255,50,50)
+crossVLine.Thickness = 1
+crossVLine.Transparency = 0.5
+
+local function getClosestInFOV()
+	local closest = nil
+	local minDist = fovRadius
+	local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p == LocalPlayer then continue end
+		local char = p.Character
+		if not char then continue end
+		local head = char:FindFirstChild("Head")
+		local hum = char:FindFirstChild("Humanoid")
+		if not head or not hum or hum.Health <= 0 then continue end
+		local sp, onScreen = Camera:WorldToViewportPoint(head.Position)
+		if not onScreen then continue end
+		local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+		if dist < minDist then
+			minDist = dist
+			closest = p
+		end
+	end
+	return closest
+end
+
+RunService.RenderStepped:Connect(function()
+	local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+	-- crosshair
+	crossCircle.Position = center
+	crossCircle.Radius = crosshairSize
+	crossDot.Position = center
+	crossHLine.From = Vector2.new(center.X - crosshairSize, center.Y)
+	crossHLine.To = Vector2.new(center.X + crosshairSize, center.Y)
+	crossVLine.From = Vector2.new(center.X, center.Y - crosshairSize)
+	crossVLine.To = Vector2.new(center.X, center.Y + crosshairSize)
+	fovCircle.Position = center
+	fovCircle.Radius = fovRadius
+
+	if aimbotEnabled then
+		aimbotTarget = getClosestInFOV()
+		if aimbotTarget and aimbotTarget.Character and aimbotTarget.Character:FindFirstChild("Head") then
+			local headPos = Camera:WorldToViewportPoint(aimbotTarget.Character.Head.Position)
+			local delta = Vector2.new(headPos.X, headPos.Y) - center
+			if delta.Magnitude > 1 then
+				mousemoverel(delta.X * smoothness, delta.Y * smoothness)
+			end
+		end
+	end
+end)
+
+local function setAimbot(active)
+	aimbotEnabled = active
+	fovCircle.Visible = active
+end
+
+-- 🔨 สร้างปุ่มต่างๆ (เริ่ม yPos=50)
+createToggle("Fly", mainFrame, 50, false, setFly)
+createToggle("Speed", mainFrame, 88, false, setSpeed)
+createToggle("Inf Jump", mainFrame, 126, false, setInfJump)
+createToggle("NoClip", mainFrame, 164, false, function(v)
+	noClipEnabled = v
+	setNoClip(v)
+end)
+createToggle("God Mode", mainFrame, 202, false, setGod)
+createToggle("ESP", mainFrame, 240, false, setESP)
+createToggle("Aimbot", mainFrame, 278, false, setAimbot)
+
+-- 🟣 ปรับ FOV
+local fovLabel = Instance.new("TextLabel")
+fovLabel.Size = UDim2.new(0,80,0,25)
+fovLabel.Position = UDim2.new(0,20,0,318)
+fovLabel.BackgroundTransparency = 1
+fovLabel.TextColor3 = Color3.fromRGB(255,255,255)
+fovLabel.Text = "FOV: "..fovRadius
+fovLabel.Font = Enum.Font.SourceSans
+fovLabel.TextSize = 12
+fovLabel.Parent = mainFrame
+
+local fovUp = Instance.new("TextButton")
+fovUp.Size = UDim2.new(0,35,0,25)
+fovUp.Position = UDim2.new(0,105,0,318)
+fovUp.BackgroundColor3 = Color3.fromRGB(120,0,180)
+fovUp.Text = "+"
+fovUp.Font = Enum.Font.SourceSansBold
+fovUp.Parent = mainFrame
+fovUp.MouseButton1Click:Connect(function()
+	fovRadius = math.min(fovRadius+25,800)
+	fovLabel.Text = "FOV: "..fovRadius
+end)
+
+local fovDown = Instance.new("TextButton")
+fovDown.Size = UDim2.new(0,35,0,25)
+fovDown.Position = UDim2.new(0,145,0,318)
+fovDown.BackgroundColor3 = Color3.fromRGB(120,0,180)
+fovDown.Text = "-"
+fovDown.Parent = mainFrame
+fovDown.MouseButton1Click:Connect(function()
+	fovRadius = math.max(fovRadius-25,50)
+	fovLabel.Text = "FOV: "..fovRadius
+end)
+
+-- 🟣 ปรับ Smooth
+local smoothLabel = Instance.new("TextLabel")
+smoothLabel.Size = UDim2.new(0,100,0,25)
+smoothLabel.Position = UDim2.new(0,20,0,353)
+smoothLabel.BackgroundTransparency = 1
+smoothLabel.TextColor3 = Color3.fromRGB(255,255,255)
+smoothLabel.Text = "Smooth: "..string.format("%.2f",smoothness)
+smoothLabel.Font = Enum.Font.SourceSans
+smoothLabel.TextSize = 12
+smoothLabel.Parent = mainFrame
+
+local smoothUp = Instance.new("TextButton")
+smoothUp.Size = UDim2.new(0,35,0,25)
+smoothUp.Position = UDim2.new(0,125,0,353)
+smoothUp.BackgroundColor3 = Color3.fromRGB(120,0,180)
+smoothUp.Text = "+"
+smoothUp.Parent = mainFrame
+smoothUp.MouseButton1Click:Connect(function()
+	smoothness = math.min(smoothness+0.05,1.0)
+	smoothLabel.Text = "Smooth: "..string.format("%.2f",smoothness)
+end)
+
+local smoothDown = Instance.new("TextButton")
+smoothDown.Size = UDim2.new(0,35,0,25)
+smoothDown.Position = UDim2.new(0,165,0,353)
+smoothDown.BackgroundColor3 = Color3.fromRGB(120,0,180)
+smoothDown.Text = "-"
+smoothDown.Parent = mainFrame
+smoothDown.MouseButton1Click:Connect(function()
+	smoothness = math.max(smoothness-0.05,0.05)
+	smoothLabel.Text = "Smooth: "..string.format("%.2f",smoothness)
+end)
+
+-- 🛑 ปรับ Crosshair Size
+local crossLabel = Instance.new("TextLabel")
+crossLabel.Size = UDim2.new(0,100,0,25)
+crossLabel.Position = UDim2.new(0,20,0,388)
+crossLabel.BackgroundTransparency = 1
+crossLabel.TextColor3 = Color3.fromRGB(255,255,255)
+crossLabel.Text = "Cross: "..crosshairSize
+crossLabel.Font = Enum.Font.SourceSans
+crossLabel.TextSize = 12
+crossLabel.Parent = mainFrame
+
+local crossUp = Instance.new("TextButton")
+crossUp.Size = UDim2.new(0,35,0,25)
+crossUp.Position = UDim2.new(0,125,0,388)
+crossUp.BackgroundColor3 = Color3.fromRGB(120,0,180)
+crossUp.Text = "+"
+crossUp.Parent = mainFrame
+crossUp.MouseButton1Click:Connect(function()
+	crosshairSize = math.min(crosshairSize+5,50)
+	crossLabel.Text = "Cross: "..crosshairSize
+end)
+
+local crossDown = Instance.new("TextButton")
+crossDown.Size = UDim2.new(0,35,0,25)
+crossDown.Position = UDim2.new(0,165,0,388)
+crossDown.BackgroundColor3 = Color3.fromRGB(120,0,180)
+crossDown.Text = "-"
+crossDown.Parent = mainFrame
+crossDown.MouseButton1Click:Connect(function()
+	crosshairSize = math.max(crosshairSize-5,5)
+	crossLabel.Text = "Cross: "..crosshairSize
+end)
+
+print("👾 Saikuto Universal Panel loaded!")
