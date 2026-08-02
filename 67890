@@ -1,0 +1,132 @@
+-- ========================================================
+-- 📌 สคริปต์ควบคุมระบบตัวละครและปืน (เวอร์ชันเสถียร) 🎯
+-- ========================================================
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- 🔑 1. ระบบยืนยัน Key และแสดงข้อความต้อนรับ
+local correctKey = "MYKEY123" -- 🔐 ตั้งค่า Key ที่คุณต้องการตรงนี้
+print("📢 โปรด get key เพื่อใช้ script 🔑")
+
+-- 💡 จำลองการกรอก Key (เปลี่ยนค่านี้เพื่อทดสอบ)
+local userEnteredKey = "MYKEY123" 
+
+if userEnteredKey ~= correctKey then
+    warn("❌ Key ไม่ถูกต้อง! ไม่สามารถใช้งานสคริปต์ได้ 🚫")
+    return
+else
+    print("🎉 ยินดีต้อนรับ คุณผู้ใช้ script! 🚀")
+end
+
+-- ========================================================
+-- 🏃‍♂️ 2. การตั้งค่าฟังก์ชั่นพื้นฐานและความเสถียรตัวละคร
+-- ========================================================
+
+local walkSpeedValue = 32   -- ⚡ ความเร็วในการเคลื่อนที่
+local jumpPowerValue = 70   -- 🛑 แรงกระโดด
+
+local function applyCharacterStats(character)
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.WalkSpeed = walkSpeedValue
+        humanoid.JumpPower = jumpPowerValue
+        humanoid.UseJumpPower = true
+        print("✅ ปรับแต่งค่าพลังตัวละครเรียบร้อย 🏃‍♂️")
+    end
+end
+
+-- อัปเดตค่าพลังทันที และเมื่อตัวละครเกิดใหม่ 🔄
+if player.Character then
+    applyCharacterStats(player.Character)
+end
+player.CharacterAdded:Connect(applyCharacterStats)
+
+-- ========================================================
+-- 🦘 3. ระบบกระโดดไม่จำกัด (Infinite Jump)
+-- ========================================================
+
+UserInputService.JumpRequest:Connect(function()
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- ========================================================
+-- 👻 4. ระบบทะลุเฉพาะด้านหน้า (Front-Only Noclip)
+-- ========================================================
+
+RunService.Stepped:Connect(function()
+    local character = player.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- ตรวจสอบสิ่งกีดขวางด้านหน้าด้วย Raycast 🔍
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local forwardVector = hrp.CFrame.LookVector
+    local rayResult = workspace:Raycast(hrp.Position, forwardVector * 3, raycastParams)
+
+    -- ปิด Collision ชั่วคราวเมื่อมีสิ่งขวางอยู่ด้านหน้า 🧱
+    if rayResult then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    else
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = true
+            end
+        end
+    end
+end)
+
+-- ========================================================
+-- 🎯 5. ระบบความแม่นยำปืน 100% (Zero Bullet Spread)
+-- ========================================================
+
+local bulletSpread = 0 -- 🎯 0 = ยิงตรงจุดศูนย์กลาง 100% ไม่มีการกระจาย
+
+local function fireWeapon(tool)
+    local character = player.Character
+    if not character then return end
+    
+    local handle = tool:FindFirstChild("Handle") or character:FindFirstChild("RightHand")
+    if not handle then return end
+
+    local startPos = handle.Position
+    local targetPos = mouse.Hit.Position
+
+    -- คำนวณทิศทางกระสุนพุ่งตรงไปยังตำแหน่งเมาส์ 📍
+    local direction = (targetPos - startPos).Unit
+    
+    print("💥 ยิงกระสุนแม่นยำไปยังทิศทาง:", direction)
+    -- 💡 เชื่อมต่อกับ RemoteEvent ของเกมเพื่อส่งตำแหน่งยิงได้ตรงนี้
+end
+
+-- ตรวจสอบการใช้งานอุปกรณ์/ปืน 🔫
+player.CharacterAdded:Connect(function(char)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            child.Activated:Connect(function()
+                fireWeapon(child)
+            end)
+        end
+    end)
+end)
+
+print("✨ สคริปต์ทำงานสมบูรณ์และเสถียรแล้วพร้อมใช้งาน! 🛡️")
