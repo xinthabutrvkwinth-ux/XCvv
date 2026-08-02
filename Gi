@@ -1,0 +1,190 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ==================== [ ตั้งค่าหลัก (SETTINGS) ] ====================
+local LOCK_KEY = Enum.KeyCode.E           -- ปุ่มกดบนคีย์บอร์ด
+local MAX_DISTANCE = 150                 -- ระยะค้นหาศัตรูสูงสุด (Studs)
+local FOV_RADIUS = 300                   -- ขอบเขตการค้นหาบนหน้าจอ (Pixels)
+local CAMERA_SMOOTHNESS = 0.25           -- ความนุ่มนวลการหันกล้อง (ยิ่งน้อยยิ่งไว)
+
+-- ==================== [ สร้าง UI แบบ SMOOTH & BORDERLESS ] ====================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SmoothLockOnGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- 1. Crosshair วงกลมกลางหน้าจอ
+local centerCircle = Instance.new("Frame")
+centerCircle.Name = "CenterCircle"
+centerCircle.Size = UDim2.new(0, 14, 0, 14)
+centerCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+centerCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+centerCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+centerCircle.BackgroundTransparency = 0.4
+centerCircle.BorderSizePixel = 0
+centerCircle.Parent = screenGui
+
+local circleCorner = Instance.new("UICorner")
+circleCorner.CornerRadius = UDim.new(1, 0)
+circleCorner.Parent = centerCircle
+
+-- 2. ปุ่มกดควบคุม UI ลอยด้านล่างแบบไร้ขอบ (Borderless Button)
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 170, 0, 42)
+toggleButton.AnchorPoint = Vector2.new(0.5, 1)
+toggleButton.Position = UDim2.new(0.5, 0, 0.92, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+toggleButton.BackgroundTransparency = 0.25
+toggleButton.BorderSizePixel = 0
+toggleButton.Font = Enum.Font.GothamMedium
+toggleButton.Text = "TARGET LOCK: OFF"
+toggleButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+toggleButton.TextSize = 13
+toggleButton.AutoButtonColor = false
+toggleButton.Parent = screenGui
+
+local buttonCorner = Instance.new("UICorner")
+buttonCorner.CornerRadius = UDim.new(0, 12)
+buttonCorner.Parent = toggleButton
+
+-- ==================== [ ตัวแปรสถานะ & TWEEN ANIMATION ] ====================
+local currentTarget = nil
+local isLocked = false
+local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+-- ฟังก์ชันปรับ UI ให้ดู Smooth
+local function UpdateUIState(locked)
+	if locked then
+		-- เมื่อล็อคเป้าติด (ขยายวงกลม + เปลี่ยนเป็นสีแดงสด + ปุ่มเปลี่ยนสี)
+		TweenService:Create(centerCircle, tweenInfo, {
+			Size = UDim2.new(0, 22, 0, 22),
+			BackgroundColor3 = Color3.fromRGB(255, 60, 60),
+			BackgroundTransparency = 0.1
+		}):Play()
+		
+		TweenService:Create(toggleButton, tweenInfo, {
+			BackgroundColor3 = Color3.fromRGB(255, 50, 65),
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundTransparency = 0.15
+		}):Play()
+		
+		toggleButton.Text = "TARGET LOCK: ACTIVE"
+	else
+		-- เมื่อยกเลิกการล็อค (คืนค่าปกติ)
+		TweenService:Create(centerCircle, tweenInfo, {
+			Size = UDim2.new(0, 14, 0, 14),
+			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundTransparency = 0.4
+		}):Play()
+		
+		TweenService:Create(toggleButton, tweenInfo, {
+			BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+			TextColor3 = Color3.fromRGB(200, 200, 200),
+			BackgroundTransparency = 0.25
+		}):Play()
+		
+		toggleButton.Text = "TARGET LOCK: OFF"
+	end
+end
+
+-- ==================== [ ระบบคำนวณการล็อคเป้า ] ====================
+local function GetClosestTarget()
+	local myCharacter = LocalPlayer.Character
+	if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+	
+	local myPos = myCharacter.HumanoidRootPart.Position
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+	
+	local closestTarget = nil
+	local shortestScreenDistance = FOV_RADIUS
+
+	for _, obj in pairs(Workspace:GetDescendants()) do
+		if obj:IsA("Humanoid") and obj.Parent ~= myCharacter and obj.Health > 0 then
+			local targetChar = obj.Parent
+			local targetPart = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Head")
+			
+			if targetPart then
+				local worldDist = (targetPart.Position - myPos).Magnitude
+				if worldDist <= MAX_DISTANCE then
+					local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+					if onScreen then
+						local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+						if screenDist < shortestScreenDistance then
+							shortestScreenDistance = screenDist
+							closestTarget = targetPart
+						end
+					end
+				end
+			end
+		end
+	end
+	return closestTarget
+end
+
+local function ToggleLock()
+	if isLocked then
+		isLocked = false
+		currentTarget = nil
+		UpdateUIState(false)
+	else
+		local target = GetClosestTarget()
+		if target then
+			currentTarget = target
+			isLocked = true
+			UpdateUIState(true)
+		end
+	end
+end
+
+-- ==================== [ EVENT LISTENERS ] ====================
+
+-- 1. กดที่ปุ่ม UI
+toggleButton.MouseButton1Click:Connect(ToggleLock)
+
+-- 2. เอฟเฟกต์ Hover บนปุ่ม UI
+toggleButton.MouseEnter:Connect(function()
+	if not isLocked then
+		TweenService:Create(toggleButton, tweenInfo, {BackgroundTransparency = 0.1}):Play()
+	end
+end)
+
+toggleButton.MouseLeave:Connect(function()
+	if not isLocked then
+		TweenService:Create(toggleButton, tweenInfo, {BackgroundTransparency = 0.25}):Play()
+	end
+end)
+
+-- 3. กดปุ่มคีย์บอร์ด (E)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == LOCK_KEY then
+		ToggleLock()
+	end
+end)
+
+-- 4. อัปเดตมุมมองกล้องนุ่มนวล (Lerp CFrame)
+RunService.RenderStepped:Connect(function()
+	if isLocked and currentTarget then
+		local targetHumanoid = currentTarget.Parent:FindFirstChildOfClass("Humanoid")
+		if not targetHumanoid or targetHumanoid.Health <= 0 then
+			isLocked = false
+			currentTarget = nil
+			UpdateUIState(false)
+			return
+		end
+
+		local cameraPos = Camera.CFrame.Position
+		local targetPos = currentTarget.Position
+		local targetCFrame = CFrame.new(cameraPos, targetPos)
+		
+		-- สมูทกล้องด้วย CFrame:Lerp
+		Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, CAMERA_SMOOTHNESS)
+	end
+end)
