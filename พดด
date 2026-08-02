@@ -1,0 +1,166 @@
+-- ========================================================
+-- ESP แบบ BillboardGui (ไม่ใช้ Drawing) + Tracer 3D เส้น
+-- ========================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+
+-- --------------------------------------------------------
+-- ตัวแปรสถานะ
+-- --------------------------------------------------------
+local features = {
+	Box = false,   -- ปุ่มเปิด/ปิด Box (BillboardGui)
+	Tracer = true  -- Tracer เปิดตลอด (ใช้ Attachment + Beam)
+}
+local espObjects = {}  -- เก็บ BillboardGui และ Beam
+local espLoop = nil
+
+-- --------------------------------------------------------
+-- ฟังก์ชันสร้าง BillboardGui Box (สีเขียว)
+-- --------------------------------------------------------
+local function createBox(plr)
+	if espObjects[plr.UserId] then return end
+	local char = plr.Character
+	if not char then
+		plr.CharacterAdded:Connect(function(c)
+			task.wait(1)
+			createBox(plr)
+		end)
+		return
+	end
+	local hrp = char:WaitForChild("HumanoidRootPart", 5)
+	if not hrp then return end
+
+	-- สร้าง BillboardGui
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESPBillboard"
+	billboard.Size = UDim2.new(4, 0, 6, 0)  -- กว้าง 4, สูง 6 (ปรับตามขนาดตัวละคร)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = hrp
+	billboard.Parent = char
+
+	-- สร้าง Frame ขอบสีเขียว (ใช้ UIListLayout หรือ Frame ซ้อน)
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.BackgroundTransparency = 1
+	frame.BorderSizePixel = 0
+	frame.Parent = billboard
+
+	-- สร้างเส้นขอบ 4 ด้าน (ใช้ Frame บางๆ)
+	local function createBorder(pos, size, color)
+		local border = Instance.new("Frame")
+		border.Size = size
+		border.Position = pos
+		border.BackgroundColor3 = color or Color3.fromRGB(0, 255, 0)
+		border.BorderSizePixel = 0
+		border.Parent = frame
+		return border
+	end
+
+	-- ขอบบน
+	createBorder(UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 3), Color3.fromRGB(0, 255, 0))
+	-- ขอบล่าง
+	createBorder(UDim2.new(0, 0, 1, -3), UDim2.new(1, 0, 0, 3), Color3.fromRGB(0, 255, 0))
+	-- ขอบซ้าย
+	createBorder(UDim2.new(0, 0, 0, 0), UDim2.new(0, 3, 1, 0), Color3.fromRGB(0, 255, 0))
+	-- ขอบขวา
+	createBorder(UDim2.new(1, -3, 0, 0), UDim2.new(0, 3, 1, 0), Color3.fromRGB(0, 255, 0))
+
+	-- ซ่อน Billboard ถ้า Box ปิด
+	billboard.Visible = features.Box
+
+	-- --------------------------------------------------------
+	-- Tracer (ใช้ Attachment + Beam)
+	-- --------------------------------------------------------
+	local attachment1 = Instance.new("Attachment")
+	attachment1.Name = "TracerAttach1"
+	attachment1.Position = Vector3.new(0, 0, 0)
+	attachment1.Parent = hrp
+
+	local attachment2 = Instance.new("Attachment")
+	attachment2.Name = "TracerAttach2"
+	attachment2.Position = Vector3.new(0, 0, 0)
+	attachment2.Parent = player.Character and player.Character:FindFirstChild("HumanoidRootPart") or nil
+
+	if attachment2.Parent then
+		local beam = Instance.new("Beam")
+		beam.Name = "TracerBeam"
+		beam.Attachment0 = attachment1
+		beam.Attachment1 = attachment2
+		beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+		beam.Transparency = NumberSequence.new(0.5)
+		beam.Width0 = 0.1
+		beam.Width1 = 0.1
+		beam.FaceCamera = true
+		beam.Parent = workspace
+		espObjects[plr.UserId] = {billboard = billboard, beam = beam, attach1 = attachment1, attach2 = attachment2}
+	else
+		espObjects[plr.UserId] = {billboard = billboard, beam = nil, attach1 = attachment1, attach2 = nil}
+	end
+end
+
+-- --------------------------------------------------------
+-- ฟังก์ชันเปิด/ปิด Box
+-- --------------------------------------------------------
+local function toggleBox(active)
+	features.Box = active
+	for _, obj in pairs(espObjects) do
+		if obj.billboard then
+			obj.billboard.Visible = active
+		end
+	end
+end
+
+-- --------------------------------------------------------
+-- เริ่ม ESP (เรียกเมื่อ Key ถูกต้อง)
+-- --------------------------------------------------------
+local function startESP()
+	-- สร้าง Box สำหรับผู้เล่นที่มีอยู่แล้ว
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			createBox(plr)
+		end
+	end
+
+	-- เมื่อมีผู้เล่นใหม่
+	Players.PlayerAdded:Connect(function(plr)
+		if plr ~= player then
+			plr.CharacterAdded:Connect(function()
+				task.wait(1)
+				createBox(plr)
+			end)
+		end
+	end)
+
+	-- เมื่อผู้เล่นออก
+	Players.PlayerRemoving:Connect(function(plr)
+		if espObjects[plr.UserId] then
+			if espObjects[plr.UserId].beam then espObjects[plr.UserId].beam:Destroy() end
+			if espObjects[plr.UserId].attach1 then espObjects[plr.UserId].attach1:Destroy() end
+			if espObjects[plr.UserId].attach2 then espObjects[plr.UserId].attach2:Destroy() end
+			if espObjects[plr.UserId].billboard then espObjects[plr.UserId].billboard:Destroy() end
+			espObjects[plr.UserId] = nil
+		end
+	end)
+
+	-- อัปเดต Attachment2 (ตำแหน่งผู้เล่นเรา) ทุกเฟรม
+	RunService.RenderStepped:Connect(function()
+		local myChar = player.Character
+		if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+			local myHRP = myChar.HumanoidRootPart
+			for _, obj in pairs(espObjects) do
+				if obj.attach2 then
+					obj.attach2.Position = myHRP.Position
+				end
+			end
+		end
+	end)
+end
+
+-- --------------------------------------------------------
+-- ตัวอย่าง UI (ใช้ร่วมกับ Key System ของมึงได้)
+-- --------------------------------------------------------
+-- สมมติว่ามึงมีปุ่มเปิด/ปิด Box อยู่แล้ว ให้เรียก toggleBox(true/false)
+-- และเรียก startESP() หลังจาก Key ถูกต้อง
