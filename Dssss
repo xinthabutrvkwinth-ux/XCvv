@@ -1,0 +1,275 @@
+-- ========================================================
+-- 📌 ใส่ส่วนนี้ลงไปแทนที่ส่วน ESP + UI เดิมทั้งหมด
+-- ========================================================
+
+-- --------------------------------------------------------
+-- 🔧 ตัวแปรสถานะ
+-- --------------------------------------------------------
+local features = {
+	Speed = false,
+	InfJump = false,
+	Noclip = false,
+	Accuracy = false,
+	Box = false,    -- ปุ่มเปิด/ปิด Box
+	Tracer = true   -- Tracer เปิดตลอด (ไม่มีปุ่ม)
+}
+
+-- --------------------------------------------------------
+-- 👁️ ระบบ ESP แยก Box และ Tracer
+-- --------------------------------------------------------
+local espItems = {}
+local minimapFrame, minimapDots = nil, {}
+local espLoop = nil
+local espConnected = false   -- ป้องกันเชื่อมต่อซ้ำ
+
+-- สร้าง Minimap (เปิดตลอด)
+local function createMinimap()
+	if minimapFrame then return end
+	minimapFrame = Instance.new("Frame")
+	minimapFrame.Size = UDim2.new(0, 150, 0, 150)
+	minimapFrame.Position = UDim2.new(1, -170, 0, 50)
+	minimapFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	minimapFrame.BackgroundTransparency = 0.7
+	minimapFrame.BorderSizePixel = 0
+	minimapFrame.Parent = screenGui
+	Instance.new("UICorner", minimapFrame).CornerRadius = UDim.new(0, 75)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 2
+	stroke.Parent = minimapFrame
+end
+
+-- สร้าง Drawing สำหรับผู้เล่นหนึ่งคน (แยก Box กับ Tracer)
+local function createESP(plr)
+	if espItems[plr.UserId] then return end
+	local boxLines = {}
+	for i = 1, 8 do
+		local line = Drawing.new("Line")
+		line.Color = Color3.fromRGB(0, 255, 0) -- เขียว
+		line.Thickness = 2
+		line.Transparency = 0
+		line.Visible = false
+		table.insert(boxLines, line)
+	end
+	local tracer = Drawing.new("Line")
+	tracer.Color = Color3.fromRGB(255, 0, 0) -- แดง
+	tracer.Thickness = 1
+	tracer.Transparency = 0.5
+	tracer.Visible = true   -- Tracer เปิดตลอด
+
+	espItems[plr.UserId] = {
+		boxLines = boxLines,
+		tracer = tracer,
+		player = plr
+	}
+end
+
+-- อัปเดต ESP ทุกเฟรม (แยกสถานะ Box และ Tracer)
+local function updateESP()
+	for userId, item in pairs(espItems) do
+		local plr = item.player
+		local char = plr.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then
+			for _, line in ipairs(item.boxLines) do line.Visible = false end
+			item.tracer.Visible = false
+			continue
+		end
+		local hrp = char.HumanoidRootPart
+		local head = char:FindFirstChild("Head")
+		if not head then continue end
+
+		-- คำนวณขนาด Box จาก ExtentsSize
+		local size = hrp.Size
+		local minY = hrp.Position.Y - size.Y/2
+		local maxY = head.Position.Y + 0.5
+		local halfX = size.X/2
+		local halfZ = size.Z/2
+
+		local corners3D = {
+			Vector3.new(hrp.Position.X - halfX, minY, hrp.Position.Z - halfZ),
+			Vector3.new(hrp.Position.X + halfX, minY, hrp.Position.Z - halfZ),
+			Vector3.new(hrp.Position.X - halfX, maxY, hrp.Position.Z - halfZ),
+			Vector3.new(hrp.Position.X + halfX, maxY, hrp.Position.Z - halfZ),
+			Vector3.new(hrp.Position.X - halfX, minY, hrp.Position.Z + halfZ),
+			Vector3.new(hrp.Position.X + halfX, minY, hrp.Position.Z + halfZ),
+			Vector3.new(hrp.Position.X - halfX, maxY, hrp.Position.Z + halfZ),
+			Vector3.new(hrp.Position.X + halfX, maxY, hrp.Position.Z + halfZ),
+		}
+		local screenPoints = {}
+		local allVisible = true
+		for _, pos in ipairs(corners3D) do
+			local sp, onScreen = Camera:WorldToViewportPoint(pos)
+			if not onScreen then allVisible = false break end
+			table.insert(screenPoints, Vector2.new(sp.X, sp.Y))
+		end
+		if not allVisible then
+			for _, line in ipairs(item.boxLines) do line.Visible = false end
+			item.tracer.Visible = false
+			continue
+		end
+
+		-- Box (เฉพาะเมื่อ features.Box = true)
+		if features.Box then
+			local minX, maxX = math.huge, -math.huge
+			local minY2D, maxY2D = math.huge, -math.huge
+			for _, sp in ipairs(screenPoints) do
+				if sp.X < minX then minX = sp.X end
+				if sp.X > maxX then maxX = sp.X end
+				if sp.Y < minY2D then minY2D = sp.Y end
+				if sp.Y > maxY2D then maxY2D = sp.Y end
+			end
+			local w = maxX - minX
+			local h = maxY2D - minY2D
+			local cornerLen = math.min(w, h) * 0.25
+			local corners = {
+				{{minX, minY2D}, {minX + cornerLen, minY2D}, {minX, minY2D + cornerLen}},
+				{{maxX, minY2D}, {maxX - cornerLen, minY2D}, {maxX, minY2D + cornerLen}},
+				{{minX, maxY2D}, {minX + cornerLen, maxY2D}, {minX, maxY2D - cornerLen}},
+				{{maxX, maxY2D}, {maxX - cornerLen, maxY2D}, {maxX, maxY2D - cornerLen}},
+			}
+			local lineIdx = 1
+			for _, corner in ipairs(corners) do
+				local p1 = corner[1]
+				local p2 = corner[2]
+				local p3 = corner[3]
+				item.boxLines[lineIdx].From = Vector2.new(p1[1], p1[2])
+				item.boxLines[lineIdx].To = Vector2.new(p2[1], p2[2])
+				item.boxLines[lineIdx].Visible = true
+				lineIdx = lineIdx + 1
+				item.boxLines[lineIdx].From = Vector2.new(p1[1], p1[2])
+				item.boxLines[lineIdx].To = Vector2.new(p3[1], p3[2])
+				item.boxLines[lineIdx].Visible = true
+				lineIdx = lineIdx + 1
+			end
+		else
+			for _, line in ipairs(item.boxLines) do line.Visible = false end
+		end
+
+		-- Tracer (เปิดตลอด)
+		local myChar = player.Character
+		if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+			local myRootPos = myChar.HumanoidRootPart.Position
+			local myScreen, myOn = Camera:WorldToViewportPoint(myRootPos)
+			local targetScreen, targetOn = Camera:WorldToViewportPoint(hrp.Position)
+			if myOn and targetOn then
+				item.tracer.From = Vector2.new(myScreen.X, myScreen.Y)
+				item.tracer.To = Vector2.new(targetScreen.X, targetScreen.Y)
+				item.tracer.Visible = true
+			else
+				item.tracer.Visible = false
+			end
+		else
+			item.tracer.Visible = false
+		end
+	end
+end
+
+-- เริ่ม ESP (เรียกครั้งเดียวหลังจาก Key ถูกต้อง)
+local function startESP()
+	if espConnected then return end
+	espConnected = true
+
+	createMinimap()
+
+	-- สร้าง ESP สำหรับผู้เล่นที่มีอยู่แล้ว
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player then
+			createESP(plr)
+		end
+	end
+
+	-- เมื่อมีผู้เล่นใหม่
+	Players.PlayerAdded:Connect(function(plr)
+		if plr ~= player then
+			plr.CharacterAdded:Connect(function(char)
+				local hrp = char:WaitForChild("HumanoidRootPart", 5)
+				if hrp then
+					createESP(plr)
+				end
+			end)
+		end
+	end)
+
+	-- เมื่อผู้เล่นออก
+	Players.PlayerRemoving:Connect(function(plr)
+		if espItems[plr.UserId] then
+			for _, line in ipairs(espItems[plr.UserId].boxLines) do line:Remove() end
+			espItems[plr.UserId].tracer:Remove()
+			espItems[plr.UserId] = nil
+		end
+	end)
+
+	-- Loop อัปเดต
+	if not espLoop then
+		espLoop = RunService.RenderStepped:Connect(function()
+			updateMinimap()
+			updateESP()
+		end)
+	end
+end
+
+-- ฟังก์ชันเปิด/ปิด Box (เรียกจากปุ่ม)
+local function toggleBox(active)
+	features.Box = active
+	-- ไม่ต้องทำอะไรเพิ่ม เพราะ updateESP จะตรวจสอบ features.Box ทุกเฟรม
+end
+
+-- --------------------------------------------------------
+-- 🖥️ แก้ไขส่วนสร้างปุ่มในเมนู
+-- --------------------------------------------------------
+-- เปลี่ยนจาก createToggleFeature("ESP", ...) เป็น createToggleFeature("Box", "📦 ESP Box", 5)
+-- และลบปุ่ม ESP เดิมออก
+
+-- ในส่วนที่สร้างปุ่ม:
+createToggleFeature("Speed", "⚡ ความเร็ว & แรงกระโดด", 1)
+createToggleFeature("InfJump", "🦘 กระโดดไม่จำกัด", 2)
+createToggleFeature("Noclip", "👻 ทะลุสิ่งกีดขวางด้านหน้า", 3)
+createToggleFeature("Accuracy", "🎯 ปืนยิงแม่นยำ 100%", 4)
+createToggleFeature("Box", "📦 ESP Box (เขียว)", 5)   -- ปุ่มใหม่
+
+-- --------------------------------------------------------
+-- 🎯 ปรับปรุงฟังก์ชัน createToggleFeature ให้เรียก toggleBox
+-- --------------------------------------------------------
+local function createToggleFeature(name, text, order)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 40)
+	btn.Text = text .. " : 🔴 ปิด"
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.SourceSansBold
+	btn.TextSize = 14
+	btn.LayoutOrder = order
+	btn.Parent = menuFrame
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+	
+	btn.MouseButton1Click:Connect(function()
+		features[name] = not features[name]
+		if features[name] then
+			btn.Text = text .. " : 🟢 เปิด"
+			btn.BackgroundColor3 = Color3.fromRGB(40, 140, 70)
+		else
+			btn.Text = text .. " : 🔴 ปิด"
+			btn.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+		end
+		-- ถ้าเป็น Box ให้เรียก toggleBox
+		if name == "Box" then
+			toggleBox(features[name])
+		end
+	end)
+end
+
+-- --------------------------------------------------------
+-- 🔑 แก้ไขส่วน Key Submit ให้เรียก startESP() ทันที
+-- --------------------------------------------------------
+submitBtn.MouseButton1Click:Connect(function()
+	if keyBox.Text == CORRECT_KEY then
+		keyFrame.Visible = false
+		menuFrame.Visible = true
+		titleLabel.Text = "🎉 ยินดีต้อนรับ! Tracer เปิดตลอด, Box กดเปิดเอง"
+		titleLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+		startESP()   -- เริ่ม ESP (Tracer + Minimap) ทันที
+	else
+		keyNotice.Text = "❌ Key ไม่ถูกต้อง!"
+		keyNotice.TextColor3 = Color3.fromRGB(255, 80, 80)
+	end
+end)
