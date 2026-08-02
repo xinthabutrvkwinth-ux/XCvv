@@ -1,0 +1,123 @@
+-- สคริป GUI + EMS (บล็อกเขียวเหนือหัว) โดย WORMGPT Saikuto
+-- วางใน StarterGui (LocalScript)
+
+local player = game.Players.LocalPlayer
+local gui = Instance.new("ScreenGui")
+gui.Name = "WormGUISaikuto"
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- สร้าง Frame หลัก (ลากได้)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 200)
+frame.Position = UDim2.new(0.5, -150, 0.5, -100)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BackgroundTransparency = 0.3
+frame.BorderSizePixel = 2
+frame.BorderColor3 = Color3.fromRGB(0, 255, 0)
+frame.Active = true
+frame.Draggable = true  -- ลากได้เลย!
+frame.Parent = gui
+
+-- ปุ่มปิด (X)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = frame
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()  -- ปิด GUI
+end)
+
+-- ปุ่มขยาย/ย่อ (Toggle size)
+local expandBtn = Instance.new("TextButton")
+expandBtn.Size = UDim2.new(0, 30, 0, 30)
+expandBtn.Position = UDim2.new(1, -70, 0, 5)
+expandBtn.Text = "+"
+expandBtn.TextColor3 = Color3.fromRGB(0, 255, 0)
+expandBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+expandBtn.BorderSizePixel = 0
+expandBtn.Parent = frame
+
+local expanded = false
+expandBtn.MouseButton1Click:Connect(function()
+    expanded = not expanded
+    if expanded then
+        frame.Size = UDim2.new(0, 600, 0, 400)
+        expandBtn.Text = "-"
+    else
+        frame.Size = UDim2.new(0, 300, 0, 200)
+        expandBtn.Text = "+"
+    end
+end)
+
+-- ป้ายชื่อ GUI
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -10, 0, 30)
+title.Position = UDim2.new(0, 5, 0, 5)
+title.Text = "WORMGPT Saikuto EMS"
+title.TextColor3 = Color3.fromRGB(0, 255, 0)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 20
+title.Parent = frame
+
+-- ระบบ EMS: บล็อกสีเขียวเหนือหัวทุกคนในเซิฟ
+local function createEMSOverlay(targetPlayer)
+    if targetPlayer == player then return end  -- ไม่ต้องใส่ตัวเอง
+    local char = targetPlayer.Character
+    if not char then
+        targetPlayer.CharacterAdded:Connect(function(newChar)
+            wait(0.5)
+            createEMSOverlay(targetPlayer)
+        end)
+        return
+    end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    -- สร้าง BillboardGui ที่มีบล็อกสีเขียว
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "EMS_Overlay"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 50, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)  -- เหนือหัว
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+
+    local greenBlock = Instance.new("Frame")
+    greenBlock.Size = UDim2.new(1, 0, 1, 0)
+    greenBlock.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    greenBlock.BackgroundTransparency = 0.2
+    greenBlock.BorderSizePixel = 0
+    greenBlock.Parent = billboard
+
+    -- เพิ่มเอฟเฟกต์กะพริบ (ไม่บังคับ)
+    local tween = game:GetService("TweenService"):Create(greenBlock, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {BackgroundTransparency = 0.6})
+    tween:Play()
+end
+
+-- ใส่ EMS ให้ทุกคนที่เข้ามาในเซิฟ
+for _, plr in ipairs(game.Players:GetPlayers()) do
+    createEMSOverlay(plr)
+end
+
+game.Players.PlayerAdded:Connect(function(newPlayer)
+    newPlayer.CharacterAdded:Connect(function()
+        wait(0.5)
+        createEMSOverlay(newPlayer)
+    end)
+end)
+
+-- ถ้ามีคนออกก็ลบ EMS (optional)
+game.Players.PlayerRemoving:Connect(function(leavingPlayer)
+    local char = leavingPlayer.Character
+    if char and char:FindFirstChild("Head") then
+        local bill = char.Head:FindFirstChild("EMS_Overlay")
+        if bill then bill:Destroy() end
+    end
+end)
+
+print("GUI + EMS พร้อมใช้งานแล้ว ไอ้เพื่อน!")
